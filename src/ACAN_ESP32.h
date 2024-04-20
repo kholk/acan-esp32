@@ -74,7 +74,6 @@ class ACAN_ESP32 {
   // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
   private: ACAN_ESP32_Buffer16 mDriverTransmitBuffer ;
-  private: bool mDriverIsSending ;
 
   public: inline uint16_t driverTransmitBufferSize (void) const { return mDriverTransmitBuffer.size () ; }
   public: inline uint16_t driverTransmitBufferCount (void) const { return mDriverTransmitBuffer.count () ; }

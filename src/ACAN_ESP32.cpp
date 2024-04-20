@@ -15,6 +15,8 @@
 //--- https://esp32.com/viewtopic.php?t=1703
 static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED ;
 
+static bool mDriverIsSending = false;
+
 //----------------------------------------------------------------------------------------
 //   CONSTRUCTOR
 //----------------------------------------------------------------------------------------
@@ -269,40 +271,49 @@ void IRAM_ATTR ACAN_ESP32::isr (void * inUserArgument) {
   if ((interrupt & TWAI_ERR_WARN_INT_ST) != 0) {
      const uint32_t status = TWAI_STATUS_REG;
      
-     if ((status & TWAI_BUS_OFF_ST) != 0 && (status & TWAI_ERR_ST) != 0) {
-       const uint32_t mode = TWAI_MODE_REG;
+     if ((status & TWAI_ERR_ST) != 0) {
+        if ((status & TWAI_BUS_OFF_ST) != 0) {
+           const uint32_t mode = TWAI_MODE_REG;
 
-       // Freeze the RX/RX error count register by setting listen only mode
-       TWAI_MODE_REG = mode | TWAI_LISTEN_ONLY_MODE;
+           // Freeze the RX/RX error count register by setting listen only mode
+           TWAI_MODE_REG = mode | TWAI_LISTEN_ONLY_MODE;
 
-       // Reset the TX error count
-       TWAI_TX_ERR_CNT_REG = 0;
+           // Reset the TX error count
+           TWAI_TX_ERR_CNT_REG = 0;
 
-       // Set TX error count to MAX: this triggers a bus-off interrupt
-       // and the controller automatically goes in reset mode
-       TWAI_TX_ERR_CNT_REG = 0xff;
+           // Set TX error count to MAX: this triggers a bus-off interrupt
+           // and the controller automatically goes in reset mode
+           TWAI_TX_ERR_CNT_REG = 0xff;
 
-       // Clear the bus-off interrupt now
-       TWAI_INT_RAW_REG = 0;
+           // Clear the bus-off interrupt now
+           TWAI_INT_RAW_REG = 0;
 
-       // Sometimes new interrupts come immediately (1 cycle, or less?)
-       interrupt |= TWAI_INT_RAW_REG;
+           // Sometimes new interrupts come immediately (1 cycle, or less?)
+           interrupt |= TWAI_INT_RAW_REG;
 
-       // Exit reset mode now: controller up again!
-       TWAI_MODE_REG = TWAI_MODE_REG & ~TWAI_RESET_MODE;
+           // Exit reset mode now: controller up again!
+           TWAI_MODE_REG = TWAI_MODE_REG & ~TWAI_RESET_MODE;
+        } else {
+           // --- Errata 2: FIX_TX_INTR_LOST
+           // Entering bus-off halts any TX that is in-progress
+           // Track the TX buffer activity and recover lost TX interrupts
+           mDriverIsSending = false;
+        }
      }
   }
 
   if ((interrupt & TWAI_RX_INT_ST) != 0) {
      myDriver->handleRXInterrupt () ;
   }
-  if ((interrupt & TWAI_TX_INT_ST) != 0) {
-     myDriver->handleTXInterrupt () ;
+  if ((interrupt & TWAI_TX_INT_ST) != 0 ||
+      (interrupt & TWAI_TX_COMPLETE) != 0 && mDriverIsSending) {
+      myDriver->handleTXInterrupt () ;
   }
   portEXIT_CRITICAL (&mux) ;
 
   portYIELD_FROM_ISR () ;
 }
+
 
 //-------------------------------------------------------------------------------------
 
