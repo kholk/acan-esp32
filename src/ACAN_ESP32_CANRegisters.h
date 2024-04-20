@@ -86,7 +86,7 @@ static const uint32_t TWAI_BUS_OFF_ST  = 0x80 ;
 // TWAI_INT_RAW_REG
 //----------------------------------------------------------------------------------------
 
-#define TWAI_INT_RAW_REG (*((const volatile uint32_t *)(ESP32_TWAI_BASE + 0x00C)))
+#define TWAI_INT_RAW_REG (*((volatile uint32_t *)(ESP32_TWAI_BASE + 0x00C)))
 
 // Bit definitions for TWAI_INT_RAW_REG
 static const uint32_t TWAI_RX_INT_ST          = 0x01;
@@ -105,6 +105,7 @@ static const uint32_t TWAI_BUS_ERR_INT_ST     = 0x80;
 
 static const uint32_t TWAI_RX_INT_ENA = 0x01 ;
 static const uint32_t TWAI_TX_INT_ENA = 0x02 ;
+static const uint32_t TWAI_ERR_WARN_INT_ENA = 0x04 ;
 
 //----------------------------------------------------------------------------------------
 // TWAI_BUS_TIMING_0_REG

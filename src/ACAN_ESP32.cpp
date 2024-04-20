@@ -205,7 +205,7 @@ uint32_t ACAN_ESP32::begin (const ACAN_ESP32_Settings & inSettings,
 //   #endif
   esp_intr_alloc (ETS_TWAI_INTR_SOURCE, 0, isr, this, & mInterruptHandler) ;
 //--------------------------------- Enable Interupts
-  TWAI_INT_ENA_REG = TWAI_TX_INT_ENA | TWAI_RX_INT_ENA ;
+  TWAI_INT_ENA_REG = TWAI_TX_INT_ENA | TWAI_RX_INT_ENA | TWAI_ERR_WARN_INT_ENA ;
 //--------------------------------- Set to Requested Mode
   setRequestedCANMode (inSettings, inFilterSettings) ;
 //---
@@ -262,7 +262,37 @@ void IRAM_ATTR ACAN_ESP32::isr (void * inUserArgument) {
   ACAN_ESP32 * myDriver = (ACAN_ESP32 *) inUserArgument ;
 
   portENTER_CRITICAL (&mux) ;
-  const uint32_t interrupt = TWAI_INT_RAW_REG ;
+  uint32_t interrupt = TWAI_INT_RAW_REG ;
+
+  //--- Errata workaround for TWAI_ERRATA_FIX_BUS_OFF_REC
+  //--- Force REC to 0 by re-triggering bus-off (set TX Error Count to 0, then to 255)
+  if ((interrupt & TWAI_ERR_WARN_INT_ST) != 0) {
+     const uint32_t status = TWAI_STATUS_REG;
+     
+     if ((status & TWAI_BUS_OFF_ST) != 0 && (status & TWAI_ERR_ST) != 0) {
+       const uint32_t mode = TWAI_MODE_REG;
+
+       // Freeze the RX/RX error count register by setting listen only mode
+       TWAI_MODE_REG = mode | TWAI_LISTEN_ONLY_MODE;
+
+       // Reset the TX error count
+       TWAI_TX_ERR_CNT_REG = 0;
+
+       // Set TX error count to MAX: this triggers a bus-off interrupt
+       // and the controller automatically goes in reset mode
+       TWAI_TX_ERR_CNT_REG = 0xff;
+
+       // Clear the bus-off interrupt now
+       TWAI_INT_RAW_REG = 0;
+
+       // Sometimes new interrupts come immediately (1 cycle, or less?)
+       interrupt |= TWAI_INT_RAW_REG;
+
+       // Exit reset mode now: controller up again!
+       TWAI_MODE_REG = TWAI_MODE_REG & ~TWAI_RESET_MODE;
+     }
+  }
+
   if ((interrupt & TWAI_RX_INT_ST) != 0) {
      myDriver->handleRXInterrupt () ;
   }
